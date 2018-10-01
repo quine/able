@@ -9,9 +9,6 @@ import android.bluetooth.BluetoothGatt.GATT_SUCCESS
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothProfile.STATE_CONNECTED
 import android.os.RemoteException
-import com.juul.able.experimental.messenger.GattCallback
-import com.juul.able.experimental.messenger.GattCallbackConfig
-import com.juul.able.experimental.messenger.Messenger
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.channels.consumeEach
@@ -48,8 +45,7 @@ class CoroutinesGattTest {
         val callback = GattCallback(GattCallbackConfig(onCharacteristicChangedCapacity)).apply {
             onConnectionStateChange(bluetoothGatt, GATT_SUCCESS, STATE_CONNECTED)
         }
-        val messenger = Messenger(bluetoothGatt, callback)
-        val gatt = CoroutinesGatt(bluetoothGatt, messenger)
+        val gatt = CoroutinesGatt(bluetoothGatt, callback)
 
         val binderThreads = FakeBinderThreadHandler(numberOfFakeBinderThreads)
         for (i in 0..numberOfFakeCharacteristicNotifications) {
@@ -86,8 +82,7 @@ class CoroutinesGattTest {
         val callback = GattCallback(GattCallbackConfig()).apply {
             onConnectionStateChange(bluetoothGatt, GATT_SUCCESS, STATE_CONNECTED)
         }
-        val messenger = Messenger(bluetoothGatt, callback)
-        val gatt = CoroutinesGatt(bluetoothGatt, messenger)
+        val gatt = CoroutinesGatt(bluetoothGatt, callback)
 
         assertFailsWith(RemoteException::class, "First invocation") {
             runBlocking {

@@ -6,9 +6,6 @@ package com.juul.able.experimental
 
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
-import com.juul.able.experimental.messenger.OnCharacteristicChanged
-import com.juul.able.experimental.messenger.OnCharacteristicRead
-import com.juul.able.experimental.messenger.OnDescriptorRead
 import io.mockk.every
 import io.mockk.mockk
 import nl.jqno.equalsverifier.EqualsVerifier
@@ -20,7 +17,7 @@ private val blackDescriptor = mockDescriptor("de923c26-b18a-474a-84e0-7837300fc6
 private val redCharacteristic = mockCharacteristic("63057836-0b22-4341-969a-8fee3a8be2b3")
 private val blackCharacteristic = mockCharacteristic("2a5346f9-1aec-4752-acec-5d269aa96e7d")
 
-class MessagesTest {
+class ResponsesTest {
 
     @Test
     fun onCharacteristicReadEquals() {
