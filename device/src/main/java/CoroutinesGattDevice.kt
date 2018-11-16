@@ -5,7 +5,6 @@
 package com.juul.able.experimental.device
 
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
@@ -140,9 +139,7 @@ class CoroutinesGattDevice internal constructor(
             eventCoroutineScope.launch {
                 Able.verbose { "onConnectionStateChange → $bluetoothDevice → Begin" }
                 newGatt.onConnectionStateChange.consumeEach {
-                    if (it.status == BluetoothGatt.GATT_SUCCESS) {
-                        _connectionState.set(it.newState)
-                    }
+                    _connectionState.set(it.newState)
                     Able.verbose { "Forwarding $it for $bluetoothDevice" }
                     onConnectionStateChange.send(it)
                 }
