@@ -19,12 +19,14 @@ import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BroadcastChannel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
-import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.filter
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import kotlin.LazyThreadSafetyMode.NONE
 import kotlin.coroutines.CoroutineContext
 
 class GattClosed(message: String, cause: Throwable) : IllegalStateException(message, cause)
@@ -93,7 +95,7 @@ class CoroutinesGatt(
      * @throws [GattClosed] if [Gatt] is closed while method is executing.
      */
     override suspend fun discoverServices(): GattStatus =
-        performBluetoothAction("discoverServices", callback.onServicesDiscovered) {
+        performBluetoothAction("discoverServices") {
             bluetoothGatt.discoverServices()
         }
 
@@ -104,7 +106,7 @@ class CoroutinesGatt(
     override suspend fun readCharacteristic(
         characteristic: BluetoothGattCharacteristic
     ): OnCharacteristicRead =
-        performBluetoothAction("readCharacteristic", callback.onCharacteristicRead) {
+        performBluetoothAction("readCharacteristic") {
             bluetoothGatt.readCharacteristic(characteristic)
         }
 
@@ -119,7 +121,7 @@ class CoroutinesGatt(
         value: ByteArray,
         writeType: WriteType
     ): OnCharacteristicWrite =
-        performBluetoothAction("writeCharacteristic", callback.onCharacteristicWrite) {
+        performBluetoothAction("writeCharacteristic") {
             characteristic.value = value
             characteristic.writeType = writeType
             bluetoothGatt.writeCharacteristic(characteristic)
@@ -134,7 +136,7 @@ class CoroutinesGatt(
         descriptor: BluetoothGattDescriptor,
         value: ByteArray
     ): OnDescriptorWrite =
-        performBluetoothAction("writeDescriptor", callback.onDescriptorWrite) {
+        performBluetoothAction("writeDescriptor") {
             descriptor.value = value
             bluetoothGatt.writeDescriptor(descriptor)
         }
@@ -144,7 +146,7 @@ class CoroutinesGatt(
      * @throws [GattClosed] if [Gatt] is closed while method is executing.
      */
     override suspend fun requestMtu(mtu: Int): OnMtuChanged =
-        performBluetoothAction("requestMtu", callback.onMtuChanged) {
+        performBluetoothAction("requestMtu") {
             bluetoothGatt.requestMtu(mtu)
         }
 
@@ -156,41 +158,40 @@ class CoroutinesGatt(
         return bluetoothGatt.setCharacteristicNotification(characteristic, enable)
     }
 
-    private suspend fun <T> performBluetoothAction(
-        methodName: String,
-        responseChannel: ReceiveChannel<T>,
-        action: () -> Boolean
-    ): T {
-        Able.debug { "$methodName → Acquiring Gatt lock" }
-        callback.waitForGattReady()
+    private val lock = Mutex()
 
+    // Thread safety mode of NONE because access is protected by `lock`.
+    private val isDisconnected by lazy(NONE) {
+        onConnectionStateChange
+            .openSubscription()
+            .filter { (_, newState) ->
+                newState == STATE_DISCONNECTING || newState == STATE_DISCONNECTED
+            }
+    }
+
+    // todo: is inline/crossinline beneficial?
+    private suspend inline fun <T> performBluetoothAction(
+        methodName: String,
+        crossinline action: () -> Boolean
+    ): T = lock.withLock {
         Able.verbose { "$methodName → withContext" }
         withContext(dispatcher) {
-            if (!action.invoke()) {
-                callback.notifyGattReady()
-                throw RemoteException("BluetoothGatt.$methodName returned false.")
-            }
+            action.invoke() || throw RemoteException("BluetoothGatt.$methodName returned false")
         }
 
         Able.verbose { "$methodName ← Waiting for BluetoothGattCallback" }
         val response = try {
-            responseChannel.receiveRequiringConnection()
+            select<T> {
+                isDisconnected.onReceive { throw GattConnectionLost() } // fixme: if another action picks up the disconnected event will this trigger again?
+                callback.onResponse.onReceive { it as T } // todo: suppress cast warning once deemed safe to do so
+            }
         } catch (e: ClosedReceiveChannelException) {
             throw GattClosed("Gatt closed during $methodName", e)
+        } catch (e: ClassCastException) {
+            TODO() // todo: choose appropriate exception that signifies that Android callbacks occurred in an unexpected order
         }
 
         Able.info { "$methodName ← $response" }
         return response
-    }
-
-    private suspend fun <T> ReceiveChannel<T>.receiveRequiringConnection(): T = select {
-        onReceive { it }
-
-        onConnectionStateChange
-            .openSubscription() // fixme: Find solution w/o subscription object creation cost.
-            .filter { (_, newState) ->
-                newState == STATE_DISCONNECTING || newState == STATE_DISCONNECTED
-            }
-            .onReceive { throw GattConnectionLost() }
     }
 }
