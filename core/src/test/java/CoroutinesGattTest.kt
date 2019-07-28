@@ -7,6 +7,7 @@ package com.juul.able.experimental
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGatt.GATT_SUCCESS
 import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothProfile.STATE_CONNECTED
 import android.os.RemoteException
 import com.juul.able.experimental.messenger.GattCallback
@@ -31,6 +32,90 @@ class CoroutinesGattTest {
         @JvmStatic
         fun setUp() {
             Able.logger = NoOpLogger()
+        }
+    }
+
+    @Test
+    fun discoverServices_gattSuccess() = runBlocking {
+        runDiscoverServicesGattStatusTest(GATT_SUCCESS)
+    }
+
+    @Test
+    fun discoverServices_gattFailure() = runBlocking {
+        runDiscoverServicesGattStatusTest(BluetoothGatt.GATT_FAILURE)
+    }
+
+    @Test
+    fun discoverServices_bluetoothGattFailure() {
+        val bluetoothGatt = mockk<BluetoothGatt> {
+            every { discoverServices() } returns false
+        }
+        val callback = GattCallback(GattCallbackConfig())
+        val messenger = Messenger(bluetoothGatt, callback)
+        val gatt = CoroutinesGatt(bluetoothGatt, messenger)
+
+        assertFailsWith(RemoteException::class) {
+            runBlocking {
+                gatt.discoverServices()
+            }
+        }
+    }
+
+    @Test
+    fun readCharacteristic_gattSuccess() = runBlocking {
+        runReadCharacteristicGattStatusTest(GATT_SUCCESS)
+    }
+
+    @Test
+    fun readCharacteristic_gattFailure() = runBlocking {
+        runReadCharacteristicGattStatusTest(BluetoothGatt.GATT_FAILURE)
+    }
+
+    @Test
+    fun readCharacteristic_bluetoothGattFailure() {
+        val characteristic = mockCharacteristic()
+        val bluetoothGatt = mockk<BluetoothGatt> {
+            every { readCharacteristic(characteristic) } returns false
+        }
+        val callback = GattCallback(GattCallbackConfig())
+        val messenger = Messenger(bluetoothGatt, callback)
+        val gatt = CoroutinesGatt(bluetoothGatt, messenger)
+
+        assertFailsWith(RemoteException::class) {
+            runBlocking {
+                gatt.readCharacteristic(characteristic)
+            }
+        }
+    }
+
+    @Test
+    fun writeDescriptor_gattSuccess() = runBlocking {
+        runWriteDescriptorGattStatusTest(GATT_SUCCESS)
+    }
+
+    @Test
+    fun writeDescriptor_gattFailure() = runBlocking {
+        runWriteDescriptorGattStatusTest(BluetoothGatt.GATT_FAILURE)
+    }
+
+    @Test
+    fun writeDescriptor_bluetoothGattFailure() {
+        val descriptor = mockk<BluetoothGattDescriptor> {
+            every { uuid } returns UUID.randomUUID()
+            every { setValue(any()) } returns true
+        }
+        val value = ByteArray(10) { 0x1 }
+        val bluetoothGatt = mockk<BluetoothGatt> {
+            every { writeDescriptor(any()) } returns false
+        }
+        val callback = GattCallback(GattCallbackConfig())
+        val messenger = Messenger(bluetoothGatt, callback)
+        val gatt = CoroutinesGatt(bluetoothGatt, messenger)
+
+        assertFailsWith(RemoteException::class) {
+            runBlocking {
+                gatt.writeDescriptor(descriptor, value)
+            }
         }
     }
 
@@ -108,11 +193,68 @@ class CoroutinesGattTest {
     }
 }
 
+private suspend fun runDiscoverServicesGattStatusTest(gattStatus: GattStatus) {
+    val bluetoothGatt = mockk<BluetoothGatt> {
+        every { discoverServices() } returns true
+    }
+    val callback = GattCallback(GattCallbackConfig()).apply {
+        onServicesDiscovered(bluetoothGatt, gattStatus)
+    }
+    val messenger = Messenger(bluetoothGatt, callback)
+    val gatt = CoroutinesGatt(bluetoothGatt, messenger)
+
+    val result = gatt.discoverServices()
+    assertEquals(gattStatus, result)
+}
+
+private suspend fun runReadCharacteristicGattStatusTest(status: GattStatus) {
+    val characteristic = mockCharacteristic()
+    val bluetoothGatt = mockk<BluetoothGatt> {
+        every { readCharacteristic(any()) } returns true
+    }
+    val callback = GattCallback(GattCallbackConfig()).apply {
+        onCharacteristicRead(bluetoothGatt, characteristic, status)
+    }
+    val messenger = Messenger(bluetoothGatt, callback)
+    val gatt = CoroutinesGatt(bluetoothGatt, messenger)
+
+    val result = gatt.readCharacteristic(characteristic)
+    assertEquals(characteristic, result.characteristic)
+    assertEquals(status, result.status)
+}
+
+private suspend fun runWriteDescriptorGattStatusTest(status: GattStatus) {
+    val descriptor = mockDescriptor()
+    val bluetoothGatt = mockk<BluetoothGatt> {
+        every { writeDescriptor(any()) } returns true
+    }
+    val callback = GattCallback(GattCallbackConfig()).apply {
+        onDescriptorWrite(bluetoothGatt, descriptor, status)
+    }
+    val messenger = Messenger(bluetoothGatt, callback)
+    val gatt = CoroutinesGatt(bluetoothGatt, messenger)
+
+    val result = gatt.writeDescriptor(descriptor, descriptor.value)
+    assertEquals(descriptor, result.descriptor)
+    assertEquals(status, result.status)
+}
+
+private fun mockDescriptor(
+    uuid: UUID = UUID.randomUUID(),
+    data: ByteArray = ByteArray(255) { it.toByte() }
+): BluetoothGattDescriptor = mockk {
+    every { getUuid() } returns uuid
+    every { setValue(data) } returns true
+    every { value } returns data
+}
+
 private fun mockCharacteristic(
     uuid: UUID = UUID.randomUUID(),
-    data: ByteArray? = null
+    data: ByteArray = ByteArray(255) { it.toByte() }
 ): BluetoothGattCharacteristic = mockk {
     every { getUuid() } returns uuid
+    every { setValue(data) } returns true
+    every { writeType = any() } returns Unit
     every { value } returns data
 }
 

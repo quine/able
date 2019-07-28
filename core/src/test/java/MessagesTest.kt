@@ -15,10 +15,18 @@ import nl.jqno.equalsverifier.EqualsVerifier
 import org.junit.Test
 import java.util.UUID
 
-private val redDescriptor = mockDescriptor("bce47f52-6c2a-43e9-a382-2c460fcc6f6c")
-private val blackDescriptor = mockDescriptor("de923c26-b18a-474a-84e0-7837300fc666")
-private val redCharacteristic = mockCharacteristic("63057836-0b22-4341-969a-8fee3a8be2b3")
-private val blackCharacteristic = mockCharacteristic("2a5346f9-1aec-4752-acec-5d269aa96e7d")
+private val redDescriptor: BluetoothGattDescriptor = mockk {
+    every { uuid } returns UUID.fromString("bce47f52-6c2a-43e9-a382-2c460fcc6f6c")
+}
+private val blackDescriptor: BluetoothGattDescriptor = mockk {
+    every { uuid } returns UUID.fromString("de923c26-b18a-474a-84e0-7837300fc666")
+}
+private val redCharacteristic: BluetoothGattCharacteristic = mockk {
+    every { uuid } returns UUID.fromString("63057836-0b22-4341-969a-8fee3a8be2b3")
+}
+private val blackCharacteristic: BluetoothGattCharacteristic = mockk {
+    every { uuid } returns UUID.fromString("2a5346f9-1aec-4752-acec-5d269aa96e7d")
+}
 
 class MessagesTest {
 
@@ -35,20 +43,6 @@ class MessagesTest {
     @Test
     fun onDescriptorReadEquals() {
         verifyEquals<OnDescriptorRead>()
-    }
-}
-
-private fun mockDescriptor(uuidString: String): BluetoothGattDescriptor {
-    val uuid = UUID.fromString(uuidString)
-    return mockk {
-        every { getUuid() } returns uuid
-    }
-}
-
-private fun mockCharacteristic(uuidString: String): BluetoothGattCharacteristic {
-    val uuid = UUID.fromString(uuidString)
-    return mockk {
-        every { getUuid() } returns uuid
     }
 }
 
