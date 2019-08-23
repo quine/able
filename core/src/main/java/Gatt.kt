@@ -10,6 +10,8 @@ import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
 import android.bluetooth.BluetoothGattDescriptor
+import android.bluetooth.BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+import android.bluetooth.BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothProfile
 import com.juul.able.experimental.messenger.OnCharacteristicChanged
@@ -19,7 +21,11 @@ import com.juul.able.experimental.messenger.OnConnectionStateChange
 import com.juul.able.experimental.messenger.OnDescriptorWrite
 import com.juul.able.experimental.messenger.OnMtuChanged
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BroadcastChannel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.util.UUID
 
@@ -99,3 +105,25 @@ interface Gatt : Closeable, CoroutineScope {
 suspend fun Gatt.writeCharacteristic(
     characteristic: BluetoothGattCharacteristic, value: ByteArray
 ): OnCharacteristicWrite = writeCharacteristic(characteristic, value, WRITE_TYPE_DEFAULT)
+
+fun Gatt.observe(
+    characteristic: BluetoothGattCharacteristic,
+    descriptor: BluetoothGattDescriptor
+): Flow<OnCharacteristicChanged> = flow {
+    setCharacteristicNotification(characteristic, true)
+    writeDescriptor(descriptor, ENABLE_NOTIFICATION_VALUE)
+
+    val channel = onCharacteristicChanged.openSubscription()
+    try {
+        for (change in channel) {
+            if (change.characteristic.uuid == characteristic.uuid) {
+                emit(change)
+            }
+        }
+    } finally {
+        withContext(NonCancellable) {
+            writeDescriptor(descriptor, DISABLE_NOTIFICATION_VALUE)
+            setCharacteristicNotification(characteristic, false)
+        }
+    }
+}
